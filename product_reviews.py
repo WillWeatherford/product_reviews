@@ -1,13 +1,14 @@
 from amazonproduct.api import API
 from bs4 import BeautifulSoup
 import requests
+import logging
 import time
 import csv
 import os
 import re
 
 # from lxml import etree
-# import logging
+
 
 # 1. use product api to get xml results for all products
 # 2. find reviews iframe in XML
@@ -26,6 +27,7 @@ ASIN_LIST = [
 ]
 
 OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
+LOGFILE_PATH = os.path.join('./', 'product_reviews.log')
 
 ASIN = 'ASIN'
 NUM_REVIEWS = 'Number of reviews'
@@ -51,19 +53,29 @@ WORDS = r'\s[Oo]ut\s[Oo]f\s5\s[Ss]tars'
 AVG_SCORE_RE = re.compile(r'^' + FLOAT + WORDS + '$')
 assert(AVG_SCORE_RE.match('4.8 out of 5 stars'))
 
+# initialize logging tools
+hn = logging.FileHandler(LOGFILE_PATH)
+lg = logging.Logger('main_logger', level=logging.DEBUG)
+lg.addHandler(hn)
+
 
 def try_me(func):
-    func_name = func.__name__
-
+    '''
+    Simple decorator to wrap functions, reporting if they return nothing
+    instead of something, or if they create an Exception.
+    '''
     def try_(*args, **kwargs):
         result = None
         asin = kwargs.get('asin', '')
+        func_name = func.__name__
         try:
             result = func(*args, **kwargs)
         except Exception as e:
-            print('Error in {} for ASIN {}:\n{}'.format(func_name, asin, e))
+            lg.error('Error in {} for ASIN {}:\n{}'.format(func_name, asin, e),
+                     exc_info=1)
         if not result:
-            print('No result from {} for ASIN {}'.format(func_name, asin))
+            lg.error('No result from {} for ASIN {}'.format(func_name, asin),
+                     exc_info=1)
         return result
 
     return try_
@@ -87,13 +99,14 @@ def get_num_reviews(reviews_el, **kwargs):
 @try_me
 def get_avg_score(reviews_el, **kwargs):
     for attr in ('alt', 'title'):
-        img = reviews_el.find('img', attrs={attr: FLOAT_RE})
-        if img:
+        try:
+            img = reviews_el.find('img', attrs={attr: FLOAT_RE})
             text = str(img.attrs[attr])
             avg_score_str = FLOAT_RE.match(text).group()
             return float(avg_score_str)
-        else:
-            print('{} not found matching regex'.format(attr))
+        except AttributeError:
+            lg.error('No image element found with {} matching regex'
+                     '{}'.format(attr, FLOAT_RE))
     return None
 
 
@@ -103,7 +116,6 @@ def get_reviews_iframe(asin=None):
     api = API(locale='us')
     xml = api.item_lookup(asin, ResponseGroup='Reviews')
     namespace = get_namespace(xml)
-    print namespace
     iframe = xml.find('.//{}{}'.format(namespace, IFRAME_NAME))
     return iframe
 
@@ -135,7 +147,7 @@ def main(asin_data, output_csv_path):
                 row[AVG_SCORE] = avg_score
 
     for row in asin_data:
-        print ', '.join(['{}: {}'.format(k, v) for k, v in row.items()])
+        lg.info(', '.join(['{}: {}'.format(k, v) for k, v in row.items()]))
 
     write_to_csv(asin_data, output_csv_path)
 
