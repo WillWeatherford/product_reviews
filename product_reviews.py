@@ -4,6 +4,7 @@ import requests
 import logging
 import time
 import csv
+import sys
 import os
 import re
 
@@ -54,8 +55,11 @@ AVG_SCORE_RE = re.compile(r'^' + FLOAT + WORDS + '$')
 assert(AVG_SCORE_RE.match('4.8 out of 5 stars'))
 
 # initialize logging tools
+logging_format = '%(levelname)s: %(message)s'
+fr = logging.Formatter(logging_format)
 hn = logging.FileHandler(LOGFILE_PATH)
 lg = logging.Logger('main_logger', level=logging.DEBUG)
+hn.setFormatter(fr)
 lg.addHandler(hn)
 
 
@@ -71,25 +75,37 @@ def try_me(func):
         try:
             result = func(*args, **kwargs)
         except Exception as e:
-            lg.error('Error in {} for ASIN {}:\n{}'.format(func_name, asin, e),
-                     exc_info=1)
+            lg.error('Error in {} for ASIN {}:\n\t{}'.format(func_name, asin, e))
         if not result:
-            lg.error('No result from {} for ASIN {}'.format(func_name, asin),
-                     exc_info=1)
+            lg.error('No result from {} for ASIN {}'.format(func_name, asin))
         return result
 
     return try_
 
 
 @try_me
-def get_review_el(iframe, **kwargs):
-    response = requests.get(iframe)
+def get_review_el(url, **kwargs):
+    '''
+    Takes a string argument (the url for an Amazon Product Reviews iframe),
+    gets HTML response from that url and returns a BeautifulSoup Element
+    instance of the div tag containing the number and average rating of
+    the reviews.
+    e.g.
+    'https://...' -> <div class='crIFrameNumCustReviews' ...>...</div>
+    '''
+    response = requests.get(url)
     soup = BeautifulSoup(response.text)
     return soup.find('div', class_=REVIEWS_DIV_CLASS)
 
 
 @try_me
 def get_num_reviews(reviews_el, **kwargs):
+    '''
+    Takes a BeautifulSoup Element instance and returns an integer of the
+    number of reviews of the product found in HTML.
+    e.g.
+    <div class='crIFrameNumCustReviews' ...>...</div> -> 223
+    '''
     reviews_link = reviews_el.find('a', text=NUM_REVIEWS_RE)
     text = reviews_link.text
     num_str = NUM_RE.match(text).group()
@@ -98,6 +114,12 @@ def get_num_reviews(reviews_el, **kwargs):
 
 @try_me
 def get_avg_score(reviews_el, **kwargs):
+    '''
+    Takes a BeautifulSoup Element instance and returns a float of the
+    average score of reviews of the product found in HTML.
+    e.g.
+    <div class='crIFrameNumCustReviews' ...>...</div> -> 4.8
+    '''
     for attr in ('alt', 'title'):
         try:
             img = reviews_el.find('img', attrs={attr: FLOAT_RE})
@@ -113,32 +135,57 @@ def get_avg_score(reviews_el, **kwargs):
 # can expand this into other API calls
 @try_me
 def get_reviews_iframe(asin=None):
+    '''
+    Takes the ASIN for a product, queries the amazonproduct API to get an XML
+    object, then returns the Product Reviews iframe URL from the XML.
+    e.g.
+    'A000H4F12' -> 'https://...'
+    '''
     api = API(locale='us')
     xml = api.item_lookup(asin, ResponseGroup='Reviews')
     namespace = get_namespace(xml)
+    print 'namespace:'
+    print namespace
     iframe = xml.find('.//{}{}'.format(namespace, IFRAME_NAME))
     return iframe
 
 
 @try_me
 def get_namespace(xml):
+    '''
+    Gets the "namespace" from the nsmap field of an XML object. This is
+    necessary to accurately find specific tags within the XML.
+    e.g.
+    <lxml.objecify> -> '{https://...}
+    '''
     ns = xml.nsmap.get(None) or DEFAULT_NAMESPACE
     return '{' + ns + '}'
 
 
 def write_to_csv(data, file_path):
+    '''
+    Writes customer reviews data to a CSV document, using the FIELDNAMES
+    constant as column headers.
+    '''
     with open(file_path, 'w') as output_csv:
         writer = csv.DictWriter(output_csv, FIELDNAMES)
         writer.writerows(data)
 
 
 def main(asin_data, output_csv_path):
+    '''
+    Main function. Loops through all given ASINs and finds review data for each
+    individually.
+    Outputs to command line stream with stdout, or saves to csv document.
+    '''
     for row in asin_data:
         time.sleep(API_DELAY)
         asin = row['ASIN']
 
         iframe = get_reviews_iframe(asin=asin)
         if iframe:
+            print 'iframe:'
+            print iframe
             el = get_review_el(iframe, asin=asin)
             if el:
                 num_reviews = get_num_reviews(el, asin=asin)
@@ -153,6 +200,10 @@ def main(asin_data, output_csv_path):
 
 
 if __name__ == '__main__':
+    lg.info('\n--------------PROCESS STARTED--------------\n')
+    args = sys.argv
+    lg.info('Arguments from command line:\n\t'.format(
+            ', '.join([str(a) for a in args])))
     asin_list = ASIN_LIST
     asin_data = [{ASIN: n, NUM_REVIEWS: 0, AVG_SCORE: 0.0} for n in asin_list]
     output_csv_path = OUTPUT_CSV_PATH
