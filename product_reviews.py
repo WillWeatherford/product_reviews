@@ -8,8 +8,6 @@ import sys
 import os
 import re
 
-# from lxml import etree
-
 
 # 1. use product api to get xml results for all products
 # 2. find reviews iframe in XML
@@ -144,8 +142,6 @@ def get_reviews_iframe(asin=None):
     api = API(locale='us')
     xml = api.item_lookup(asin, ResponseGroup='Reviews')
     namespace = get_namespace(xml)
-    print 'namespace:'
-    print namespace
     iframe = xml.find('.//{}{}'.format(namespace, IFRAME_NAME))
     return iframe
 
@@ -184,8 +180,6 @@ def main(asin_data, output_csv_path):
 
         iframe = get_reviews_iframe(asin=asin)
         if iframe:
-            print 'iframe:'
-            print iframe
             el = get_review_el(iframe, asin=asin)
             if el:
                 num_reviews = get_num_reviews(el, asin=asin)
