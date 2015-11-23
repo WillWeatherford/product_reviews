@@ -1,4 +1,4 @@
-from amazonproduct.api import API
+from amazonproduct.api import API, InvalidSignature, InvalidClientTokenId
 from bs4 import BeautifulSoup
 import requests
 import logging
@@ -69,11 +69,17 @@ def try_me(func):
     def try_(*args, **kwargs):
         result = None
         asin = kwargs.get('asin', '')
+        api = kwargs.get('api', None)
         func_name = func.__name__
         try:
             result = func(*args, **kwargs)
         except Exception as e:
             lg.error('Error in {} for ASIN {}:\n\t{}'.format(func_name, asin, e))
+            if api:
+                if isinstance(e, InvalidClientTokenId):
+                    lg.info('Used Access Key: {}'.format(api.access_key))
+                if isinstance(e, InvalidSignature):
+                    lg.info('Used Secret Key: {}'.format(api.secret_key))
         if not result:
             lg.error('No result from {} for ASIN {}'.format(func_name, asin))
         return result
@@ -132,14 +138,13 @@ def get_avg_score(reviews_el, **kwargs):
 
 # can expand this into other API calls
 @try_me
-def get_reviews_iframe(asin=None):
+def get_reviews_iframe(asin=None, api=None):
     '''
     Takes the ASIN for a product, queries the amazonproduct API to get an XML
     object, then returns the Product Reviews iframe URL from the XML.
     e.g.
     'A000H4F12' -> 'https://...'
     '''
-    api = API(locale='us')
     xml = api.item_lookup(asin, ResponseGroup='Reviews')
     namespace = get_namespace(xml)
     iframe = xml.find('.//{}{}'.format(namespace, IFRAME_NAME))
@@ -174,11 +179,12 @@ def main(asin_data, output_csv_path):
     individually.
     Outputs to command line stream with stdout, or saves to csv document.
     '''
+    api = API(locale='us')
     for row in asin_data:
         time.sleep(API_DELAY)
         asin = row['ASIN']
 
-        iframe = get_reviews_iframe(asin=asin)
+        iframe = get_reviews_iframe(asin=asin, api=api)
         if iframe:
             el = get_review_el(iframe, asin=asin)
             if el:
