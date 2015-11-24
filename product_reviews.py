@@ -21,10 +21,10 @@ import re
 # TODO
 # fix warning for soup from response.text
 # re-try if no http response
-# export as JSON array
-# import as JSON array
-
+# take credentials as input, or from nearby file
 # get this list from command line input or file input instead
+
+ASIN_LIST = []
 
 OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
 LOGFILE_PATH = os.path.join('./', 'product_reviews.log')
@@ -206,10 +206,11 @@ if __name__ == '__main__':
     lg.info('\n--------------PROCESS STARTED--------------\n')
     try:
         arg1 = sys.argv[1]
-        # could be a file or a json array
         asin_list = json.loads(arg1)
+
     except IndexError:
-        raise IndexError('Expected argument: list of ASINs in JSON array or file.')
+        # raise IndexError('Expected argument: list of ASINs in JSON array or file.')
+        asin_list = ASIN_LIST
     asin_data = [{ASIN: n, NUM_REVIEWS: 0, AVG_SCORE: 0.0} for n in asin_list]
     output_csv_path = OUTPUT_CSV_PATH
     main(asin_data, output_csv_path)
