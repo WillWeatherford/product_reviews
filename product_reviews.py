@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from amazonproduct.api import API, InvalidSignature, InvalidClientTokenId
 from bs4 import BeautifulSoup
 import requests
