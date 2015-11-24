@@ -188,20 +188,24 @@ def write_to_csv(data, file_path):
         writer.writerows(data)
 
 
-def output_json(data):
-    j = json.dumps(data)
-    print(j)
+def output_json(data, out):
+    '''
+    Write JSON to a given "file-like" object. Default is sys.stdout, which
+    print to the console.
+    '''
+    j = '{}\n'.format(json.dumps(data))
+    out.write(j)
 
 
-def main(asin_list, cfg, output_csv_path):
+def main(asin_list, cfg, out):
     '''
     Main function. Loops through all given ASINs and finds review data for each
     individually.
     Outputs to command line stream with stdout, or saves to csv document.
     '''
     asin_data = []
-    api = API(locale='us', cfg=cfg)
-    for asin in asin_data:
+    api = API(cfg=cfg, locale='us')
+    for asin in asin_list:
         time.sleep(API_DELAY)
 
         iframe = get_reviews_iframe(asin=asin, api=api)
@@ -211,19 +215,18 @@ def main(asin_list, cfg, output_csv_path):
                 num_reviews = get_num_reviews(el, asin=asin)
                 avg_score = get_avg_score(el, asin=asin)
 
-                if all(asin, num_reviews, avg_score):
+                if all((asin, num_reviews, avg_score)):
                     row = {ASIN: asin,
                            NUM_REVIEWS: num_reviews,
                            AVG_SCORE: avg_score}
                     asin_data.append(row)
 
-    output_json(asin_data)
-    # write_to_csv(asin_data, output_csv_path)
+    output_json(asin_data, out)
+    # write_to_csv(asin_data, out)
 
 
 if __name__ == '__main__':
     lg.info('--------------PROCESS STARTED--------------\n')
-    print sys.argv
     try:
         arg1 = sys.argv[1]
         asin_list = json.loads(arg1)
@@ -235,5 +238,8 @@ if __name__ == '__main__':
         cfg = json.loads(arg2)
     except IndexError:
         cfg = CONFIG_FILE_PATH
-    output_csv_path = OUTPUT_CSV_PATH
-    main(asin_list, cfg, output_csv_path)
+    try:
+        out = sys.argv[3]
+    except IndexError:
+        out = sys.stdout
+    main(asin_list, cfg, out)
