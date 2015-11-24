@@ -16,13 +16,11 @@ import re
 # 4. get HTML with requests
 # 5. scrape HTML for num reviews and rating
 #       find('div', attrs={'class':'crIFrameNumCustReviews'})
-# 6. export to CSV
+# 6. print to console as JSON
 
 # TODO
-# fix warning for soup from response.text
-# re-try if no http response
 # take credentials as input, or from nearby file
-# get this list from command line input or file input instead
+# file input
 
 ASIN_LIST = []
 
@@ -35,6 +33,9 @@ AVG_SCORE = 'Average score'
 FIELDNAMES = [ASIN, NUM_REVIEWS, AVG_SCORE]
 
 API_DELAY = 2
+REQUEST_DELAY = 5
+TIMEOUT = 10
+REQUEST_ATTEMPTS = 10
 
 DEFAULT_NAMESPACE = '{http://webservices.amazon.com/AWSECommerceService/2011-08-01}'
 IFRAME_NAME = 'IFrameURL'
@@ -43,17 +44,21 @@ REVIEWS_DIV_CLASS = 'crIFrameNumCustReviews'
 # Regular expressions for matching customer reviews data in HTML
 NUM = r'\d{1,7}'
 NUM_RE = re.compile(r'^' + NUM)
-CUST = r'(\s[Cc]ustomer)?\s[Rr]eviews'
+CUST = r'(\s[Cc]ustomer)?\s[Rr]eview(s)?'
 NUM_REVIEWS_RE = re.compile(r'^' + NUM + CUST + '$')
 assert(NUM_REVIEWS_RE.match('223 customer reviews'))
+assert(NUM_REVIEWS_RE.match('0 Customer Reviews'))
+assert(NUM_REVIEWS_RE.match('1 Review'))
 
 FLOAT = r'[0-5]\.[0-9]'
 FLOAT_RE = re.compile(r'^' + FLOAT)
-WORDS = r'\s[Oo]ut\s[Oo]f\s5\s[Ss]tars'
+WORDS = r'\s[Oo]ut\s[Oo]f\s5(\s[Ss]tars)?'
 AVG_SCORE_RE = re.compile(r'^' + FLOAT + WORDS + '$')
 assert(AVG_SCORE_RE.match('4.8 out of 5 stars'))
+assert(AVG_SCORE_RE.match('4.8 Out Of 5 Stars'))
+assert(AVG_SCORE_RE.match('0.0 out of 5'))
 
-# initialize logging tools
+# Initialize logging tools
 logging_format = '%(levelname)s: %(message)s'
 fr = logging.Formatter(logging_format)
 hn = logging.FileHandler(LOGFILE_PATH)
@@ -87,6 +92,33 @@ def try_me(func):
     return try_
 
 
+# can expand this into other API calls
+@try_me
+def get_reviews_iframe(asin=None, api=None):
+    '''
+    Takes the ASIN for a product, queries the amazonproduct API to get an XML
+    object, then returns the Product Reviews iframe URL from the XML.
+    e.g.
+    'A000H4F12' -> 'https://...'
+    '''
+    xml = api.item_lookup(asin, ResponseGroup='Reviews')
+    namespace = get_namespace(xml)
+    iframe = xml.find('.//{}{}'.format(namespace, IFRAME_NAME))
+    return iframe
+
+
+@try_me
+def get_namespace(xml):
+    '''
+    Gets the "namespace" from the nsmap field of an XML object. This is
+    necessary to accurately find specific tags within the XML.
+    e.g.
+    <lxml.objecify> -> '{https://...}
+    '''
+    ns = xml.nsmap.get(None) or DEFAULT_NAMESPACE
+    return '{' + ns + '}'
+
+
 @try_me
 def get_review_el(url, **kwargs):
     '''
@@ -97,8 +129,21 @@ def get_review_el(url, **kwargs):
     e.g.
     'https://...' -> <div class='crIFrameNumCustReviews' ...>...</div>
     '''
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text)
+    attempts = 0
+    while attempts <= REQUEST_ATTEMPTS:
+        try:
+            response = requests.get(url, timeout=TIMEOUT)
+            break
+        except requests.exceptions.RequestException as e:
+            attempts += 1
+            if attempts > REQUEST_ATTEMPTS:
+                raise e
+            time.sleep(REQUEST_DELAY)
+    print response.content
+    print type(response.content)
+    # print response.text
+    # print type(response.text)
+    soup = BeautifulSoup(response.text, 'lxml')
     return soup.find('div', class_=REVIEWS_DIV_CLASS)
 
 
@@ -134,33 +179,6 @@ def get_avg_score(reviews_el, **kwargs):
             lg.error('No image element found with {} matching regex'
                      '{}'.format(attr, FLOAT_RE))
     return None
-
-
-# can expand this into other API calls
-@try_me
-def get_reviews_iframe(asin=None, api=None):
-    '''
-    Takes the ASIN for a product, queries the amazonproduct API to get an XML
-    object, then returns the Product Reviews iframe URL from the XML.
-    e.g.
-    'A000H4F12' -> 'https://...'
-    '''
-    xml = api.item_lookup(asin, ResponseGroup='Reviews')
-    namespace = get_namespace(xml)
-    iframe = xml.find('.//{}{}'.format(namespace, IFRAME_NAME))
-    return iframe
-
-
-@try_me
-def get_namespace(xml):
-    '''
-    Gets the "namespace" from the nsmap field of an XML object. This is
-    necessary to accurately find specific tags within the XML.
-    e.g.
-    <lxml.objecify> -> '{https://...}
-    '''
-    ns = xml.nsmap.get(None) or DEFAULT_NAMESPACE
-    return '{' + ns + '}'
 
 
 def write_to_csv(data, file_path):
