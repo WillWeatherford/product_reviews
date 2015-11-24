@@ -9,7 +9,6 @@ import sys
 import os
 import re
 
-
 # 1. use product api to get xml results for all products
 # 2. find reviews iframe in XML
 # 3. get url from iframe
@@ -19,13 +18,15 @@ import re
 # 6. print to console as JSON
 
 # TODO
-# take credentials as input, or from nearby file
+# time stamps in log
 # file input
+# use argparse for more sophisticated use of command line args and flags?
 
 ASIN_LIST = []
 
-OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
 LOGFILE_PATH = os.path.join('./', 'product_reviews.log')
+CONFIG_FILE_PATH = os.path.join('./', '.amazon-product-api')
+OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
 
 ASIN = 'ASIN'
 NUM_REVIEWS = 'Number of reviews'
@@ -139,10 +140,6 @@ def get_review_el(url, **kwargs):
             if attempts > REQUEST_ATTEMPTS:
                 raise e
             time.sleep(REQUEST_DELAY)
-    print response.content
-    print type(response.content)
-    # print response.text
-    # print type(response.text)
     soup = BeautifulSoup(response.text, 'lxml')
     return soup.find('div', class_=REVIEWS_DIV_CLASS)
 
@@ -196,16 +193,16 @@ def output_json(data):
     print(j)
 
 
-def main(asin_data, output_csv_path):
+def main(asin_list, cfg, output_csv_path):
     '''
     Main function. Loops through all given ASINs and finds review data for each
     individually.
     Outputs to command line stream with stdout, or saves to csv document.
     '''
-    api = API(locale='us')
-    for row in asin_data:
+    asin_data = []
+    api = API(locale='us', cfg=cfg)
+    for asin in asin_data:
         time.sleep(API_DELAY)
-        asin = row['ASIN']
 
         iframe = get_reviews_iframe(asin=asin, api=api)
         if iframe:
@@ -213,22 +210,30 @@ def main(asin_data, output_csv_path):
             if el:
                 num_reviews = get_num_reviews(el, asin=asin)
                 avg_score = get_avg_score(el, asin=asin)
-                row[NUM_REVIEWS] = num_reviews
-                row[AVG_SCORE] = avg_score
+
+                if all(asin, num_reviews, avg_score):
+                    row = {ASIN: asin,
+                           NUM_REVIEWS: num_reviews,
+                           AVG_SCORE: avg_score}
+                    asin_data.append(row)
 
     output_json(asin_data)
     # write_to_csv(asin_data, output_csv_path)
 
 
 if __name__ == '__main__':
-    lg.info('\n--------------PROCESS STARTED--------------\n')
+    lg.info('--------------PROCESS STARTED--------------\n')
+    print sys.argv
     try:
         arg1 = sys.argv[1]
         asin_list = json.loads(arg1)
-
     except IndexError:
         # raise IndexError('Expected argument: list of ASINs in JSON array or file.')
         asin_list = ASIN_LIST
-    asin_data = [{ASIN: n, NUM_REVIEWS: 0, AVG_SCORE: 0.0} for n in asin_list]
+    try:
+        arg2 = sys.argv[2]
+        cfg = json.loads(arg2)
+    except IndexError:
+        cfg = CONFIG_FILE_PATH
     output_csv_path = OUTPUT_CSV_PATH
-    main(asin_data, output_csv_path)
+    main(asin_list, cfg, output_csv_path)
