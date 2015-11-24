@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import requests
 import logging
 import time
+import json
 import csv
 import sys
 import os
@@ -18,9 +19,13 @@ import re
 # 6. export to CSV
 
 # TODO
+# fix warning for soup from response.text
+# re-try if no http response
+# export as JSON array
+# import as JSON array
 
 # get this list from command line input or file input instead
-ASIN_LIST = [
+TEST_ASIN_LIST = [
     'B00W0I6TIM',
     'jdhdk$dm'
 ]
@@ -83,7 +88,6 @@ def try_me(func):
         if not result:
             lg.error('No result from {} for ASIN {}'.format(func_name, asin))
         return result
-
     return try_
 
 
@@ -173,6 +177,11 @@ def write_to_csv(data, file_path):
         writer.writerows(data)
 
 
+def output_json(data):
+    j = json.dumps(data)
+    print(j)
+
+
 def main(asin_data, output_csv_path):
     '''
     Main function. Loops through all given ASINs and finds review data for each
@@ -193,18 +202,19 @@ def main(asin_data, output_csv_path):
                 row[NUM_REVIEWS] = num_reviews
                 row[AVG_SCORE] = avg_score
 
-    for row in asin_data:
-        lg.info(', '.join(['{}: {}'.format(k, v) for k, v in row.items()]))
-
-    write_to_csv(asin_data, output_csv_path)
+    output_json(asin_data)
+    # write_to_csv(asin_data, output_csv_path)
 
 
 if __name__ == '__main__':
     lg.info('\n--------------PROCESS STARTED--------------\n')
-    args = sys.argv
-    lg.info('Arguments from command line:\n\t'.format(
-            ', '.join([str(a) for a in args])))
-    asin_list = ASIN_LIST
+    try:
+        arg1 = sys.argv[1]
+        # could be a file or a json array
+        asin_list = json.loads(arg1)
+    except IndexError:
+        # in future, raise error if no arg is given for input
+        asin_list = TEST_ASIN_LIST
     asin_data = [{ASIN: n, NUM_REVIEWS: 0, AVG_SCORE: 0.0} for n in asin_list]
     output_csv_path = OUTPUT_CSV_PATH
     main(asin_data, output_csv_path)
