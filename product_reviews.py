@@ -25,10 +25,6 @@ import re
 # import as JSON array
 
 # get this list from command line input or file input instead
-TEST_ASIN_LIST = [
-    'B00W0I6TIM',
-    'jdhdk$dm'
-]
 
 OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
 LOGFILE_PATH = os.path.join('./', 'product_reviews.log')
@@ -213,8 +209,7 @@ if __name__ == '__main__':
         # could be a file or a json array
         asin_list = json.loads(arg1)
     except IndexError:
-        # in future, raise error if no arg is given for input
-        asin_list = TEST_ASIN_LIST
+        raise IndexError('Expected argument: list of ASINs in JSON array or file.')
     asin_data = [{ASIN: n, NUM_REVIEWS: 0, AVG_SCORE: 0.0} for n in asin_list]
     output_csv_path = OUTPUT_CSV_PATH
     main(asin_data, output_csv_path)
