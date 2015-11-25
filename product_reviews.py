@@ -206,7 +206,7 @@ def main(asin_list, cfg, out):
     Outputs to command line stream with stdout, or saves to csv document.
     '''
     asin_data = []
-    api = API(cfg=cfg, locale='us')
+    api = API(cfg=cfg)
     for asin in asin_list:
         time.sleep(API_DELAY)
 
