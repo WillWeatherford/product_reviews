@@ -21,7 +21,6 @@ import re
 # 6. print to console as JSON
 
 # TODO
-# time stamps in log
 # overwrite log file?
 # file input
 # use argparse for more sophisticated use of command line args and flags?
@@ -101,11 +100,11 @@ def try_me(func):
                                                              exc_info=True))
             if api:
                 if isinstance(e, InvalidClientTokenId):
-                    lg.info('Used Access Key: {}'.format(api.access_key))
+                    lg.info('Bad Access Key: {}'.format(api.access_key))
                 if isinstance(e, InvalidSignature):
-                    lg.info('Used Secret Key: {}'.format(api.secret_key))
+                    lg.info('Bad Secret Key: {}'.format(api.secret_key))
         if result:
-            lg.info('{} returned ')
+            lg.info('{} returned {}...'.format(func_name, str(result)[:60]))
         else:
             lg.error('No result from {} for ASIN {}'.format(func_name, asin))
         return result
