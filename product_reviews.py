@@ -1,5 +1,6 @@
 from amazonproduct.api import API, InvalidSignature, InvalidClientTokenId
 from bs4 import BeautifulSoup
+import argparse
 import requests
 import logging
 import time
@@ -19,14 +20,15 @@ import re
 
 # TODO
 # time stamps in log
+# overwrite log file?
 # file input
 # use argparse for more sophisticated use of command line args and flags?
 
-ASIN_LIST = []
+# ASIN_LIST = []
 
 LOGFILE_PATH = os.path.join('./', 'product_reviews.log')
 CONFIG_FILE_PATH = os.path.join('./', '.amazon-product-api')
-OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
+# OUTPUT_CSV_PATH = os.path.join('./', 'product_reviews_data.csv')
 
 ASIN = 'ASIN'
 NUM_REVIEWS = 'Number of reviews'
@@ -60,12 +62,23 @@ assert(AVG_SCORE_RE.match('4.8 Out Of 5 Stars'))
 assert(AVG_SCORE_RE.match('0.0 out of 5'))
 
 # Initialize logging tools
-logging_format = '%(levelname)s: %(message)s'
+logging_format = '%(asctime)s %(levelname)s: %(message)s'
 fr = logging.Formatter(logging_format)
 hn = logging.FileHandler(LOGFILE_PATH)
 lg = logging.Logger('main_logger', level=logging.DEBUG)
 hn.setFormatter(fr)
 lg.addHandler(hn)
+
+
+class BetterAPI(API):
+    '''
+    Subclasses API to enforce string instead of unicode arguments for
+    hashed credentials.
+    '''
+    def __init__(self, *args, **kwargs):
+        super(BetterAPI, self).__init__(*args, **kwargs)
+        self.access_key = self.access_key.encode('utf-8')
+        self.secret_key = self.secret_key.encode('utf-8')
 
 
 def try_me(func):
@@ -81,13 +94,17 @@ def try_me(func):
         try:
             result = func(*args, **kwargs)
         except Exception as e:
-            lg.error('Error in {} for ASIN {}:\n\t{}'.format(func_name, asin, e))
+            lg.error('Error in {} for ASIN {}:\n\t{}'.format(func_name,
+                                                             asin, e,
+                                                             exc_info=True))
             if api:
                 if isinstance(e, InvalidClientTokenId):
                     lg.info('Used Access Key: {}'.format(api.access_key))
                 if isinstance(e, InvalidSignature):
                     lg.info('Used Secret Key: {}'.format(api.secret_key))
-        if not result:
+        if result:
+            lg.info('{} returned ')
+        else:
             lg.error('No result from {} for ASIN {}'.format(func_name, asin))
         return result
     return try_
@@ -95,7 +112,7 @@ def try_me(func):
 
 # can expand this into other API calls
 @try_me
-def get_reviews_iframe(asin=None, api=None):
+def get_reviews_iframe(api=None, asin=None, **kwargs):
     '''
     Takes the ASIN for a product, queries the amazonproduct API to get an XML
     object, then returns the Product Reviews iframe URL from the XML.
@@ -204,7 +221,7 @@ def main(asin_list, cfg, out):
     Outputs to command line stream with stdout, or saves to csv document.
     '''
     asin_data = []
-    api = API(cfg=cfg, locale='us')
+    api = BetterAPI(cfg=cfg)
     for asin in asin_list:
         time.sleep(API_DELAY)
 
@@ -231,8 +248,7 @@ if __name__ == '__main__':
         arg1 = sys.argv[1]
         asin_list = json.loads(arg1)
     except IndexError:
-        # raise IndexError('Expected argument: list of ASINs in JSON array or file.')
-        asin_list = ASIN_LIST
+        raise IndexError('Expected argument: list of ASINs in JSON array or file.')
     try:
         arg2 = sys.argv[2]
         cfg = json.loads(arg2)
@@ -242,4 +258,5 @@ if __name__ == '__main__':
         out = sys.argv[3]
     except IndexError:
         out = sys.stdout
+
     main(asin_list, cfg, out)
