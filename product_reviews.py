@@ -223,11 +223,7 @@ def main(asin_list, cfg, out):
     Outputs to command line stream with stdout, or saves to csv document.
     '''
     asin_data = []
-<<<<<<< HEAD
     api = BetterAPI(cfg=cfg)
-=======
-    api = API(cfg=cfg)
->>>>>>> d4f4e9076fa0486fe399a5e433ee2843453337fc
     for asin in asin_list:
         time.sleep(API_DELAY)
 
