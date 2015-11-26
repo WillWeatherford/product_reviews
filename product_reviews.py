@@ -4,6 +4,8 @@ from amazonproduct.api import API, InvalidSignature, InvalidClientTokenId
 from bs4 import BeautifulSoup
 import argparse
 import requests
+from requests.exceptions import RequestException
+from urllib2 import URLError
 import logging
 import time
 import json
@@ -24,8 +26,6 @@ import re
 # overwrite log file?
 # file input
 # use argparse for more sophisticated use of command line args and flags?
-
-# ASIN_LIST = []
 
 LOGFILE_PATH = os.path.join('./', 'product_reviews.log')
 CONFIG_FILE_PATH = os.path.join('./', '.amazon-product-api')
@@ -88,21 +88,33 @@ def try_me(func):
     instead of something, or if they create an Exception.
     '''
     def try_(*args, **kwargs):
+        retry_connect = True
+        attempts = 0
         result = None
         asin = kwargs.get('asin', '')
         api = kwargs.get('api', None)
         func_name = func.__name__
-        try:
-            result = func(*args, **kwargs)
-        except Exception as e:
-            lg.error('Error in {} for ASIN {}:\n\t{}'.format(func_name,
-                                                             asin, e,
-                                                             exc_info=True))
-            if api:
-                if isinstance(e, InvalidClientTokenId):
+        while attempts < REQUEST_ATTEMPTS and retry_connect:
+            retry_connect = False
+            attempts += 1
+            try:
+                result = func(*args, **kwargs)
+                break
+            except Exception as e:
+                lg.error('Error in {} for ASIN {}:'
+                         '\n\t{} {}'.format(func_name, asin, type(e), e,
+                                            exc_info=True))
+                if isinstance(e, (URLError, RequestException)):
+                    lg.info('Unable to connect; {} attempts left. '
+                            'Try again after {} seconds.'.format(attempts,
+                                                                 REQUEST_DELAY))
+                    retry_connect = True
+                    time.sleep(REQUEST_DELAY)
+                elif isinstance(e, InvalidClientTokenId) and api:
                     lg.info('Bad Access Key: {}'.format(api.access_key))
-                if isinstance(e, InvalidSignature):
+                elif isinstance(e, InvalidSignature) and api:
                     lg.info('Bad Secret Key: {}'.format(api.secret_key))
+
         if result:
             lg.info('{} returned {}...'.format(func_name, str(result)[:60]))
         else:
@@ -148,16 +160,7 @@ def get_review_el(url, **kwargs):
     e.g.
     'https://...' -> <div class='crIFrameNumCustReviews' ...>...</div>
     '''
-    attempts = 0
-    while attempts <= REQUEST_ATTEMPTS:
-        try:
-            response = requests.get(url, timeout=TIMEOUT)
-            break
-        except requests.exceptions.RequestException as e:
-            attempts += 1
-            if attempts > REQUEST_ATTEMPTS:
-                raise e
-            time.sleep(REQUEST_DELAY)
+    response = requests.get(url, timeout=TIMEOUT)
     soup = BeautifulSoup(response.text, 'lxml')
     return soup.find('div', class_=REVIEWS_DIV_CLASS)
 
@@ -226,9 +229,9 @@ def main(asin_list, cfg, out):
     for asin in asin_list:
         time.sleep(API_DELAY)
 
-        iframe = get_reviews_iframe(asin=asin, api=api)
+        iframe = get_reviews_iframe(max_attempts=10, asin=asin, api=api)
         if iframe:
-            el = get_review_el(iframe, asin=asin)
+            el = get_review_el(iframe, max_attempts=10, asin=asin)
             if el:
                 num_reviews = get_num_reviews(el, asin=asin)
                 avg_score = get_avg_score(el, asin=asin)
