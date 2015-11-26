@@ -86,6 +86,8 @@ def try_me(func):
     '''
     Simple decorator to wrap functions, reporting if they return nothing
     instead of something, or if they create an Exception.
+    If the Exception is a connection problem, it will try a number of times
+    to reconnect.
     '''
     def try_(*args, **kwargs):
         retry_connect = True
@@ -105,7 +107,7 @@ def try_me(func):
                          '\n\t{} {}'.format(func_name, asin, type(e), e,
                                             exc_info=True))
                 if isinstance(e, (URLError, RequestException)):
-                    lg.info('Unable to connect; {} attempts left. '
+                    lg.info('Unable to connect on attempt {}. '
                             'Try again after {} seconds.'.format(attempts,
                                                                  REQUEST_DELAY))
                     retry_connect = True
@@ -115,9 +117,7 @@ def try_me(func):
                 elif isinstance(e, InvalidSignature) and api:
                     lg.info('Bad Secret Key: {}'.format(api.secret_key))
 
-        if result:
-            lg.info('{} returned {}...'.format(func_name, str(result)[:60]))
-        else:
+        if not result:
             lg.error('No result from {} for ASIN {}'.format(func_name, asin))
         return result
     return try_
@@ -139,7 +139,7 @@ def get_reviews_iframe(api=None, asin=None, **kwargs):
 
 
 @try_me
-def get_namespace(xml):
+def get_namespace(xml, **kwargs):
     '''
     Gets the "namespace" from the nsmap field of an XML object. This is
     necessary to accurately find specific tags within the XML.
