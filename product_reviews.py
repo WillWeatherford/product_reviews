@@ -2,7 +2,7 @@
 
 from amazonproduct.api import API, InvalidSignature, InvalidClientTokenId
 from bs4 import BeautifulSoup
-import argparse
+# import argparse
 import requests
 from requests.exceptions import RequestException
 from urllib2 import URLError
@@ -23,7 +23,7 @@ import re
 # 6. print to console as JSON
 
 # TODO
-# overwrite log file?
+# overwrite log file
 # file input
 # use argparse for more sophisticated use of command line args and flags?
 
@@ -46,10 +46,12 @@ IFRAME_NAME = 'IFrameURL'
 REVIEWS_DIV_CLASS = 'crIFrameNumCustReviews'
 
 # Regular expressions for matching customer reviews data in HTML
-NUM = r'\d{1,7}'
+NUM = r'(\d{1,3},){0,3}\d{1,3}'
 NUM_RE = re.compile(r'^' + NUM)
 CUST = r'(\s[Cc]ustomer)?\s[Rr]eview(s)?'
 NUM_REVIEWS_RE = re.compile(r'^' + NUM + CUST + '$')
+assert(NUM_REVIEWS_RE.match('1,000 customer reviews'))
+assert(NUM_REVIEWS_RE.match('1,847,219 customer reviews'))
 assert(NUM_REVIEWS_RE.match('223 customer reviews'))
 assert(NUM_REVIEWS_RE.match('0 Customer Reviews'))
 assert(NUM_REVIEWS_RE.match('1 Review'))
@@ -174,9 +176,12 @@ def get_num_reviews(reviews_el, **kwargs):
     <div class='crIFrameNumCustReviews' ...>...</div> -> 223
     '''
     reviews_link = reviews_el.find('a', text=NUM_REVIEWS_RE)
+    if not reviews_link:
+        raise ValueError('Could not match the regular expression for number'
+                         ' of reviews in given HTML element.')
     text = reviews_link.text
     num_str = NUM_RE.match(text).group()
-    return int(num_str)
+    return int(num_str.replace(',', ''))
 
 
 @try_me
@@ -188,14 +193,14 @@ def get_avg_score(reviews_el, **kwargs):
     <div class='crIFrameNumCustReviews' ...>...</div> -> 4.8
     '''
     for attr in ('alt', 'title'):
-        try:
-            img = reviews_el.find('img', attrs={attr: FLOAT_RE})
-            text = str(img.attrs[attr])
-            avg_score_str = FLOAT_RE.match(text).group()
-            return float(avg_score_str)
-        except AttributeError:
-            lg.error('No image element found with {} matching regex'
-                     '{}'.format(attr, FLOAT_RE))
+        img = reviews_el.find('img', attrs={attr: FLOAT_RE})
+        if not img:
+            raise ValueError('No image element found with {} matching regex'
+                             '{}'.format(attr, FLOAT_RE))
+        text = str(img.attrs[attr])
+        avg_score_str = FLOAT_RE.match(text).group()
+        return float(avg_score_str)
+
     return None
 
 
